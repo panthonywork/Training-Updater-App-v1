@@ -1194,7 +1194,42 @@ def _render_section_readonly(section: Section) -> None:
             )
 
 
+# ── Password gate ─────────────────────────────────────────────────────────────
+
+def _check_password() -> bool:
+    """
+    Returns True if the app should be shown.
+    If APP_PASSWORD is set in the environment/secrets, require it before proceeding.
+    If no password is configured the gate is open (useful for local dev).
+    """
+    required = os.getenv("APP_PASSWORD", "").strip()
+    if not required:
+        return True
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("TD Collateral Modernizer")
+    st.caption("Enter the access password to continue.")
+    st.divider()
+
+    with st.form("password_form"):
+        entered = st.text_input("Password", type="password", placeholder="Enter password…")
+        submitted = st.form_submit_button("Enter →", type="primary", use_container_width=True)
+
+    if submitted:
+        if entered == required:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password — please try again.")
+
+    return False
+
+
 # ── Main router ────────────────────────────────────────────────────────────────
+if not _check_password():
+    st.stop()
+
 show_sidebar()
 stage = st.session_state.stage
 
