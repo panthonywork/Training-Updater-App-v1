@@ -24,6 +24,7 @@ from src.extractor import (
 from src.models import ChangeType, ReviewState, Section, sections_from_json, sections_to_json
 from src.patcher import patch_document, patch_pptx
 from src.reviewer import generate_review_document
+from src.demo import get_demo_files
 from src import db
 
 load_dotenv()
@@ -795,7 +796,7 @@ def show_dashboard() -> None:
     st.title("TD Collateral Modernizer")
     st.caption("Manage your document modernization projects, or run a one-off quick process.")
 
-    col_new, col_quick, _ = st.columns([1, 1, 2])
+    col_new, col_quick, col_demo, _ = st.columns([1, 1, 1, 1])
     with col_new:
         if st.button("+ New Project", type="primary", use_container_width=True):
             st.session_state.stage = "project_new"
@@ -805,6 +806,10 @@ def show_dashboard() -> None:
             st.session_state.active_project_id = None
             st.session_state.active_document_id = None
             st.session_state.stage = "upload"
+            st.rerun()
+    with col_demo:
+        if st.button("🎬 Try Demo", use_container_width=True, help="Load sample documents and run a pre-built demo"):
+            st.session_state.stage = "demo"
             st.rerun()
 
     st.divider()
@@ -1196,6 +1201,104 @@ def _render_section_readonly(section: Section) -> None:
             )
 
 
+# ── Demo mode ─────────────────────────────────────────────────────────────────
+
+def show_demo_screen() -> None:
+    if st.button("← Back to Dashboard"):
+        st.session_state.stage = "dashboard"
+        st.rerun()
+
+    st.title("Demo Mode")
+    st.write(
+        "This demo uses two pre-built sample documents so you can explore the full "
+        "workflow without uploading any files."
+    )
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Document to Update")
+        st.info(
+            "**NovaPay Pro — Product Brief (2022)**\n\n"
+            "An outdated product brief with stale product name, old pricing tiers, "
+            "missing features, and an outdated support SLA."
+        )
+
+    with col2:
+        st.subheader("Reference Material")
+        st.info(
+            "**NovaPay Internal — Q1 2025 Product Update**\n\n"
+            "Internal spec covering the rebrand to 'NovaPay Platform', new features "
+            "(AI Smart Reminders, multi-currency, mobile app), updated pricing, "
+            "expanded integrations, new SLA, and current company stats."
+        )
+
+    st.divider()
+
+    st.subheader("What has changed?")
+    st.caption(
+        "The AI will be given this context note along with the documents:"
+    )
+    st.info(
+        "The product has been rebranded from 'NovaPay Pro' to 'NovaPay Platform'. "
+        "Pricing, feature set, integrations, SLA, and company stats have all been updated "
+        "as of Q1 2025. All customer-facing copy must reflect the new name and current details."
+    )
+
+    st.divider()
+
+    provider = st.session_state.ai_provider
+    user_key = st.session_state.get(f"user_key_{provider.value}", "")
+    if not provider_is_configured(provider, user_key=user_key):
+        st.warning(
+            f"Enter your **{PROVIDER_LABELS[provider]}** API key in the sidebar before running the demo.",
+            icon="⚠️",
+        )
+
+    if st.button("▶ Run Demo", type="primary", use_container_width=True):
+        _launch_demo()
+
+
+def _launch_demo() -> None:
+    outdated_bytes, reference_bytes, outdated_name, reference_name, context_note = get_demo_files()
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_ref:
+        tmp_ref.write(reference_bytes)
+        tmp_ref_path = Path(tmp_ref.name)
+
+    ref_text, ref_err = extract_reference_text(tmp_ref_path)
+    tmp_ref_path.unlink(missing_ok=True)
+
+    if ref_err:
+        st.error(f"Demo setup failed — could not read reference document: {ref_err}")
+        return
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_doc:
+        tmp_doc.write(outdated_bytes)
+        tmp_doc_path = Path(tmp_doc.name)
+
+    sections = extract_docx_sections(tmp_doc_path)
+    tmp_doc_path.unlink(missing_ok=True)
+
+    if not sections:
+        st.error("Demo setup failed — could not extract sections from the sample document.")
+        return
+
+    st.session_state.original_docx_bytes = outdated_bytes
+    st.session_state.original_filename = outdated_name
+    st.session_state.reference_text = f"--- {reference_name} ---\n{ref_text}"
+    st.session_state.context_note = context_note
+    st.session_state.sections = sections
+    st.session_state.processing_complete = False
+    st.session_state.doc_format = "docx"
+    st.session_state.active_project_id = None
+    st.session_state.active_document_id = None
+    st.session_state.stage = "processing"
+    st.rerun()
+
+
 # ── Password gate ─────────────────────────────────────────────────────────────
 
 def _check_password() -> bool:
@@ -1237,6 +1340,8 @@ stage = st.session_state.stage
 
 if stage == "dashboard":
     show_dashboard()
+elif stage == "demo":
+    show_demo_screen()
 elif stage == "project_new":
     show_new_project_screen()
 elif stage == "project_detail":
