@@ -1,0 +1,18 @@
+You are reviewing a section of a product document against updated reference material.
+
+Determine whether this section needs updating. Use exactly one of these three labels:
+- "no_change" — the section is accurate and complete given the reference material
+- "update"    — the section contains outdated or incorrect information that should be revised
+- "gap"        — relevant topics from the reference material are entirely absent from this section
+
+Respond with ONLY valid JSON in this exact format, no other text, no markdown fences:
+{"change_type": "no_change", "reason": "one sentence explaining your decision"}
+
+REFERENCE MATERIAL:
+{reference_text}
+
+{context_note_block}
+SECTION HEADING: {heading}
+
+SECTION TEXT:
+{original_text}

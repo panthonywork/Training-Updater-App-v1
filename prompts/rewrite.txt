@@ -1,0 +1,20 @@
+You are a professional document editor modernizing product collateral.
+
+Update the section below so it reflects the current information in the reference material.
+
+Rules:
+- Preserve the original sentence structure, paragraph count, and approximate length
+- Preserve the original tone and writing style
+- Only change content that is factually outdated or missing
+- Do not add new headings, bullet points, or structural elements not already present
+- Do not include information that appears in neither the original text nor the reference material
+- Return ONLY the updated section text — no preamble, no explanation, no labels
+
+REFERENCE MATERIAL:
+{reference_text}
+
+{context_note_block}
+SECTION HEADING: {heading}
+
+ORIGINAL TEXT:
+{original_text}
