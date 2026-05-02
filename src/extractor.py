@@ -172,7 +172,7 @@ def _is_title_shape(shape) -> bool:
 def extract_reference_text(path: Path) -> tuple[Optional[str], Optional[str]]:
     """
     Returns (text, error_message). error_message is None on success.
-    Supports .docx and .pdf reference files.
+    Supports .docx, .pdf, and .pptx reference files.
     """
     suffix = path.suffix.lower()
 
@@ -190,4 +190,17 @@ def extract_reference_text(path: Path) -> tuple[Optional[str], Optional[str]]:
             )
         return text, None
 
-    return None, f"Unsupported reference file type: '{suffix}'. Please upload a .docx or .pdf file."
+    if suffix == ".pptx":
+        prs = Presentation(str(path))
+        lines: list[str] = []
+        for slide_idx, slide in enumerate(prs.slides, 1):
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    text = shape.text_frame.text.strip()
+                    if text:
+                        lines.append(text)
+        if not lines:
+            return None, "No readable text found in this PowerPoint file."
+        return "\n".join(lines), None
+
+    return None, f"Unsupported reference file type: '{suffix}'. Please upload a .docx, .pdf, or .pptx file."
