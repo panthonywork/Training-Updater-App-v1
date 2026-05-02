@@ -145,8 +145,10 @@ PROVIDER_REQUIRED_KEYS: dict[AIProvider, list[str]] = {
 }
 
 
-def provider_is_configured(provider: AIProvider) -> bool:
-    """Return True if all required env vars for this provider are set and non-empty."""
+def provider_is_configured(provider: AIProvider, user_key: str = "") -> bool:
+    """Return True if a usable key exists — either entered by the user or set in the environment."""
+    if provider != AIProvider.AZURE_OPENAI and user_key.strip():
+        return True
     return all(os.getenv(k) for k in PROVIDER_REQUIRED_KEYS[provider])
 
 
@@ -208,9 +210,12 @@ class BaseAIProvider(ABC):
 # ── Gemini ─────────────────────────────────────────────────────────────────────
 
 class GeminiProvider(BaseAIProvider):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str = "") -> None:
         from google import genai
-        self._client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        key = api_key.strip() or os.environ.get("GEMINI_API_KEY", "")
+        if not key:
+            raise ValueError("No Gemini API key provided. Enter your key in the sidebar.")
+        self._client = genai.Client(api_key=key)
         self._models = PROVIDER_MODELS[AIProvider.GEMINI]
         self._classify_tmpl = _load_prompt("classify.txt")
         self._rewrite_tmpl  = _load_prompt("rewrite.txt")
@@ -237,9 +242,12 @@ class GeminiProvider(BaseAIProvider):
 # ── OpenAI ─────────────────────────────────────────────────────────────────────
 
 class OpenAIProvider(BaseAIProvider):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str = "") -> None:
         from openai import OpenAI
-        self._client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        key = api_key.strip() or os.environ.get("OPENAI_API_KEY", "")
+        if not key:
+            raise ValueError("No OpenAI API key provided. Enter your key in the sidebar.")
+        self._client = OpenAI(api_key=key)
         self._models = PROVIDER_MODELS[AIProvider.OPENAI]
         self._classify_tmpl = _load_prompt("classify.txt")
         self._rewrite_tmpl  = _load_prompt("rewrite.txt")
@@ -271,9 +279,12 @@ class OpenAIProvider(BaseAIProvider):
 # ── Anthropic ──────────────────────────────────────────────────────────────────
 
 class AnthropicProvider(BaseAIProvider):
-    def __init__(self) -> None:
+    def __init__(self, api_key: str = "") -> None:
         import anthropic
-        self._client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        key = api_key.strip() or os.environ.get("ANTHROPIC_API_KEY", "")
+        if not key:
+            raise ValueError("No Anthropic API key provided. Enter your key in the sidebar.")
+        self._client = anthropic.Anthropic(api_key=key)
         self._models = PROVIDER_MODELS[AIProvider.ANTHROPIC]
         self._classify_tmpl = _load_prompt("classify.txt")
         self._rewrite_tmpl  = _load_prompt("rewrite.txt")
@@ -349,11 +360,13 @@ _REGISTRY: dict[AIProvider, type[BaseAIProvider]] = {
 }
 
 
-def get_provider(provider: AIProvider) -> BaseAIProvider:
+def get_provider(provider: AIProvider, api_key: str = "") -> BaseAIProvider:
     cls = _REGISTRY.get(provider)
     if cls is None:
         raise ValueError(f"Unknown provider: {provider}")
-    return cls()
+    if provider == AIProvider.AZURE_OPENAI:
+        return cls()
+    return cls(api_key=api_key)
 
 
 # ── Boilerplate detection (no API call) ────────────────────────────────────────
@@ -379,6 +392,7 @@ def process_document(
     reference_text: str,
     context_note: str,
     provider: AIProvider,
+    api_key: str = "",
 ) -> Generator[tuple[str, str], None, None]:
     """
     Run the two-pass AI pipeline over all sections.
@@ -386,7 +400,7 @@ def process_document(
       phase = "classify" | "rewrite" | "summary" | "done"
     Mutates each Section in-place (change_type, proposed_text, classify_reason).
     """
-    ai = get_provider(provider)
+    ai = get_provider(provider, api_key=api_key)
     total = len(sections)
     flagged: list[Section] = []
 

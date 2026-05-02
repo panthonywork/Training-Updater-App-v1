@@ -141,14 +141,30 @@ def show_sidebar() -> None:
             )
 
         st.divider()
-        st.caption("**API key status**")
-        for provider in AIProvider:
-            label = PROVIDER_LABELS[provider]
-            if provider_is_configured(provider):
-                st.caption(f"✅ {label}")
+        st.caption("**Your API key**")
+
+        if selected == AIProvider.AZURE_OPENAI:
+            st.caption("Azure OpenAI reads keys from the server environment.")
+            configured = provider_is_configured(selected)
+            st.caption("✅ Configured" if configured else "🔴 Missing — check server env vars")
+        else:
+            _KEY_PLACEHOLDERS = {
+                AIProvider.GEMINI:    "AIza...",
+                AIProvider.OPENAI:    "sk-...",
+                AIProvider.ANTHROPIC: "sk-ant-...",
+            }
+            st.text_input(
+                "Paste your API key",
+                type="password",
+                placeholder=_KEY_PLACEHOLDERS.get(selected, ""),
+                label_visibility="collapsed",
+                key=f"user_key_{selected.value}",
+            )
+            has_key = bool(st.session_state.get(f"user_key_{selected.value}", "").strip())
+            if has_key:
+                st.caption("✅ Key entered — ready to process")
             else:
-                missing = [k for k in PROVIDER_REQUIRED_KEYS[provider] if not os.getenv(k)]
-                st.caption(f"🔴 {label} — missing: `{'`, `'.join(missing)}`")
+                st.caption("🔴 Enter your key to process documents")
 
 
 # ── Upload screen ──────────────────────────────────────────────────────────────
@@ -277,8 +293,10 @@ def _extract_primary_sections(path: Path, suffix: str) -> tuple[list[Section], O
 
 def _friendly_error(exc: Exception) -> str:
     msg = str(exc)
+    if "no" in msg.lower() and "api key provided" in msg.lower():
+        return "No API key entered. Paste your key into the sidebar field before processing."
     if "api_key" in msg.lower() or "authentication" in msg.lower() or "401" in msg:
-        return "Invalid or missing API key. Check the key in your .env file and restart the app."
+        return "Invalid API key. Double-check the key you entered in the sidebar."
     if "permission_denied" in msg.lower() or "403" in msg:
         return (
             "Access denied (403). The selected model is not available on your API plan or project. "
@@ -303,11 +321,11 @@ def show_processing_screen() -> None:
         st.rerun()
         return
 
-    if not provider_is_configured(provider):
+    user_key = st.session_state.get(f"user_key_{provider.value}", "")
+    if not provider_is_configured(provider, user_key=user_key):
         st.error(
-            f"**{PROVIDER_LABELS[provider]}** is not configured. "
-            f"Add the required key(s) to your `.env` file and restart the app, "
-            f"or choose a different provider in the sidebar."
+            f"No API key entered for **{PROVIDER_LABELS[provider]}**. "
+            f"Paste your key into the sidebar field and try again."
         )
         if st.button("← Back to Upload"):
             st.session_state.stage = "upload"
@@ -341,7 +359,7 @@ def show_processing_screen() -> None:
     error_ph = st.empty()
 
     try:
-        for phase, msg in process_document(sections, reference_text, context_note, provider):
+        for phase, msg in process_document(sections, reference_text, context_note, provider, api_key=user_key):
             if phase == "classify":
                 classify_ph.markdown(f"🔍 **Classifying sections…** &nbsp; {msg}")
             elif phase == "summary":
