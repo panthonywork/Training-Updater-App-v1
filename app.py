@@ -205,7 +205,7 @@ def show_upload_screen() -> None:
         st.subheader("Reference Material")
         ref_files = st.file_uploader(
             "Upload updated reference material",
-            type=["docx", "pdf"],
+            type=["docx", "pdf", "pptx"],
             accept_multiple_files=True,
             key="upload_ref_files",
             label_visibility="collapsed",
@@ -869,7 +869,7 @@ def show_new_project_screen() -> None:
         st.caption("Upload reference files now, or add them later from the project page.")
         ref_uploads = st.file_uploader(
             "Upload reference files",
-            type=["docx", "pdf"],
+            type=["docx", "pdf", "pptx"],
             accept_multiple_files=True,
             label_visibility="collapsed",
         )
@@ -925,8 +925,8 @@ def show_project_detail() -> None:
     with st.expander("➕ Add Reference Files"):
         with st.form("add_refs_form", clear_on_submit=True):
             new_refs = st.file_uploader(
-                "Upload .docx or .pdf reference files",
-                type=["docx", "pdf"],
+                "Upload .docx, .pdf, or .pptx reference files",
+                type=["docx", "pdf", "pptx"],
                 accept_multiple_files=True,
                 label_visibility="collapsed",
             )
