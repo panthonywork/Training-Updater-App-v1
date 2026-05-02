@@ -86,6 +86,8 @@ def show_sidebar() -> None:
         st.header("AI Provider")
 
         provider_options = list(AIProvider)
+        if not isinstance(st.session_state.get("ai_provider"), AIProvider):
+            st.session_state.ai_provider = AIProvider.GEMINI
         current_index = provider_options.index(st.session_state.ai_provider)
 
         selected = st.selectbox(
