@@ -28,6 +28,15 @@ from src.demo import get_demo_files
 from src import db
 
 load_dotenv()
+
+# Expose Streamlit secrets as env vars so db.py can read DATABASE_URL
+# without importing streamlit directly.
+try:
+    if hasattr(st, "secrets") and "DATABASE_URL" in st.secrets:
+        os.environ.setdefault("DATABASE_URL", st.secrets["DATABASE_URL"])
+except Exception:
+    pass
+
 db.init_db()
 
 st.set_page_config(
@@ -1002,20 +1011,16 @@ def _render_document_card(doc: db.DocumentRow, ref_files: list[db.RefFileRow]) -
 # ── Phase 4: Launch processing from a project document ────────────────────────
 
 def _launch_from_project(doc: db.DocumentRow) -> None:
-    doc_path = Path(doc.stored_path)
-    if not doc_path.exists():
-        st.error(f"Document file not found on disk: {doc.original_filename}")
-        return
-
     ref_files = db.get_reference_files(doc.project_id)
     ref_texts: list[str] = []
     errors: list[str] = []
+
     for rf in ref_files:
-        rf_path = Path(rf.stored_path)
-        if not rf_path.exists():
-            errors.append(f"Reference file missing: {rf.filename}")
-            continue
-        text, err = extract_reference_text(rf_path)
+        with tempfile.NamedTemporaryFile(suffix=Path(rf.filename).suffix, delete=False) as tmp:
+            tmp.write(rf.file_bytes)
+            tmp_path = Path(tmp.name)
+        text, err = extract_reference_text(tmp_path)
+        tmp_path.unlink(missing_ok=True)
         if err:
             errors.append(f"{rf.filename}: {err}")
         elif text:
@@ -1030,7 +1035,12 @@ def _launch_from_project(doc: db.DocumentRow) -> None:
         return
 
     suffix = Path(doc.original_filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(doc.file_bytes)
+        doc_path = Path(tmp.name)
     sections, extract_error = _extract_primary_sections(doc_path, suffix)
+    doc_path.unlink(missing_ok=True)
+
     if extract_error:
         st.error(extract_error)
         return
@@ -1038,7 +1048,7 @@ def _launch_from_project(doc: db.DocumentRow) -> None:
         st.error(f"{doc.original_filename} appears to be empty or unreadable.")
         return
 
-    st.session_state.original_docx_bytes = doc_path.read_bytes()
+    st.session_state.original_docx_bytes = doc.file_bytes
     st.session_state.original_filename = doc.original_filename
     st.session_state.reference_text = "\n\n".join(ref_texts)
     st.session_state.context_note = ""
@@ -1131,15 +1141,12 @@ def show_session_history() -> None:
             )
 
         with col_updated:
-            doc_path = Path(doc.stored_path)
             fname_lower = doc.original_filename.lower()
             if fname_lower.endswith(".pdf"):
                 st.caption("PDF document — apply changes manually using the review document.")
-            elif not doc_path.exists():
-                st.caption("Original file no longer on disk — updated document cannot be regenerated.")
             elif fname_lower.endswith(".pptx"):
                 patched_bytes, patched_filename = patch_pptx(
-                    doc_path.read_bytes(), sections, doc.original_filename
+                    doc.file_bytes, sections, doc.original_filename
                 )
                 st.download_button(
                     label="⬇️ Download Updated Presentation",
@@ -1151,7 +1158,7 @@ def show_session_history() -> None:
                 )
             else:
                 patched_bytes, patched_filename = patch_document(
-                    doc_path.read_bytes(), sections, doc.original_filename
+                    doc.file_bytes, sections, doc.original_filename
                 )
                 st.download_button(
                     label="⬇️ Download Updated Document",
